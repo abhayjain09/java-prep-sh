@@ -1,0 +1,33 @@
+# Default configuration for the self-issued-JWT architecture (this module's
+# primary demo). See application-oauth2-resource-server-example.yml for the
+# alternative "validate tokens issued by an external IdP like OKTA" profile —
+# the two are NOT meant to be active simultaneously; a real app picks one
+# architecture for a given token, though it is possible (and common at large
+# orgs) to run both patterns for different APIs in the same organization.
+
+server:
+  port: 8081
+
+spring:
+  application:
+    name: orders-security-demo
+
+security:
+  jwt:
+    # NEVER commit a real secret here. In this repo it resolves from the
+    # JWT_SECRET environment variable, with a dev-only fallback so the app
+    # can still start locally without extra setup. The fallback below is a
+    # base64url-encoded 32-byte value generated only for this teaching
+    # module — treat any secret checked into source control, including this
+    # one, as already compromised and never reuse it for anything real.
+    secret: ${JWT_SECRET:cmVwbGFjZS10aGlzLWRldi1vbmx5LXNlY3JldC1kby1ub3QtdXNl}
+    issuer: orders-api
+    access-token-ttl-minutes: 15
+
+# Actuator health endpoint used by SecurityConfig's permitAll() example for
+# load-balancer / orchestrator liveness checks.
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health

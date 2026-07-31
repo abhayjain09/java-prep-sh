@@ -1,0 +1,70 @@
+# Local development infrastructure: PostgreSQL (see application.yml's
+# spring.datasource.*) + Redis (see application.yml's spring.data.redis.*
+# and CacheConfig.java).
+#
+# NOT RUNNABLE IN THIS SANDBOX: Docker isn't installed here, so this file
+# cannot be exercised as part of building this module. It IS a real,
+# usable compose file — on your own machine, once Docker Desktop / Docker
+# Engine is installed:
+#
+#   cd spring
+#   docker compose up -d          # starts postgres + redis in the background
+#   docker compose ps             # confirm both are healthy
+#   docker compose logs -f        # tail logs
+#   docker compose down           # stop (add -v to also delete the data volume)
+#
+# Then run the app against them:
+#   mvn spring-boot:run
+#
+# WHY DOCKER COMPOSE FOR LOCAL DEV (vs. installing Postgres/Redis natively):
+# reproducible versions across every developer's machine, no "works on my
+# laptop" drift, and a single `down -v` wipes all local state for a clean
+# slate — invaluable when experimenting with schema changes (ddl-auto=update)
+# or bad cache data during learning. Testcontainers (Module 10 — Testing)
+# takes this same idea further by spinning up these containers
+# automatically for integration tests, so tests never depend on a
+# developer having remembered to `docker compose up` first.
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: orders-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: orders_db
+      POSTGRES_USER: orders_app
+      POSTGRES_PASSWORD: orders_app_password
+    ports:
+      # host:container — matches spring.datasource.url in application.yml
+      - "5432:5432"
+    volumes:
+      # Named volume so data survives `docker compose down` (but not `-v`).
+      - orders_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U orders_app -d orders_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  redis:
+    image: redis:7-alpine
+    container_name: orders-redis
+    restart: unless-stopped
+    ports:
+      # host:container — matches spring.data.redis.host/port in application.yml
+      - "6379:6379"
+    # No password set (appendonly off) — deliberately minimal for local dev.
+    # PRODUCTION NOTE: a real deployment (e.g. AWS ElastiCache, see aws/
+    # module) enables AUTH (requirepass / an IAM-authenticated token),
+    # TLS in transit, and persistence (AOF or RDB snapshots) depending on
+    # whether the cache is allowed to be treated as purely ephemeral or
+    # needs to survive a restart without a full cold-cache stampede.
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  orders_postgres_data:

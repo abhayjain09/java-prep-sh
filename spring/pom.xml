@@ -1,0 +1,146 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  Module 5/8 — Spring Boot Maven project for the Order/Inventory REST API.
+
+  WHY MAVEN (not Gradle): both are fine choices; Maven's declarative XML and
+  convention-over-configuration model is still the more common default at
+  large, risk-averse enterprises (banks, insurers) because its dependency
+  resolution and plugin behavior are extremely stable and predictable across
+  years. Gradle (Groovy/Kotlin DSL) is more flexible and often faster for
+  large multi-module builds via incremental/ up-to-date checks and build
+  caching, and is common at product companies (Google, Netflix-style shops).
+  Know both; this repo standardizes on Maven because `mvn` commands are more
+  uniform to document than an arbitrary Gradle wrapper setup.
+
+  WHY THESE STARTERS (one line each, expanded in spring/README.md):
+  - spring-boot-starter-web       : embedded Tomcat + Spring MVC for REST controllers
+  - spring-boot-starter-data-jpa  : Hibernate + Spring Data repositories
+  - spring-boot-starter-validation: Bean Validation (Jakarta Validation / Hibernate Validator)
+  - spring-boot-starter-cache     : the Spring Cache abstraction (@Cacheable/@CacheEvict)
+  - spring-boot-starter-data-redis: Redis client (Lettuce) used as the cache backend
+  - spring-boot-starter-actuator  : health/metrics/info endpoints for production observability
+  - spring-boot-starter-hateoas   : RepresentationModel/EntityModel + link builders
+  - springdoc-openapi-starter-webmvc-ui : generates OpenAPI 3 spec + Swagger UI from annotations
+  - postgresql                    : JDBC driver for the real target database (see database/ module)
+  - spring-boot-starter-test      : JUnit 5, Mockito, AssertJ, MockMvc — standard test stack
+
+  THIS SANDBOX CANNOT RUN MAVEN: no `mvn`/`java` on PATH here. Once you have
+  a JDK 21 + Maven 3.9+ locally:
+    mvn -f spring/pom.xml clean verify      # compile + run tests
+    mvn -f spring/pom.xml spring-boot:run   # start the app (needs Postgres+Redis — see docker-compose.yml)
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+      Inheriting from spring-boot-starter-parent pulls in the Spring Boot
+      "dependency management" BOM (Bill of Materials): every spring-boot-*
+      starter below resolves a mutually-tested version without you pinning
+      versions by hand, which is precisely what avoids the classic
+      "works on my machine, dependency hell in CI" class of bug. Only
+      dependencies NOT covered by the Boot BOM (springdoc, postgresql driver
+      version is covered actually, springdoc is not) need an explicit
+      <version>.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.3.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.interviewprep</groupId>
+    <artifactId>spring-orders-api</artifactId>
+    <version>0.0.1-SNAPSHOT</version>
+    <name>spring-orders-api</name>
+    <description>
+        Module 5/8 — Spring Boot + Spring Data JPA + REST + Redis caching
+        evolution of the java-basics/ Order/Inventory domain.
+    </description>
+
+    <properties>
+        <java.version>21</java.version>
+        <springdoc.version>2.6.0</springdoc.version>
+    </properties>
+
+    <dependencies>
+        <!-- REST controllers, embedded Tomcat, Jackson JSON (de)serialization -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Data JPA repositories + Hibernate as the JPA provider -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- @Valid / @NotBlank / @Positive etc. on DTOs (Jakarta Bean Validation) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-validation</artifactId>
+        </dependency>
+
+        <!-- @EnableCaching / @Cacheable / @CacheEvict abstraction (provider-agnostic) -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
+
+        <!-- Redis client (Lettuce under the hood) used as the concrete cache + session store -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-redis</artifactId>
+        </dependency>
+
+        <!-- Health checks, metrics, /actuator/* endpoints for ops visibility -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- RepresentationModel / EntityModel / linkTo(methodOn(...)) for the HATEOAS example -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-hateoas</artifactId>
+        </dependency>
+
+        <!-- OpenAPI 3 spec + Swagger UI generated from @Operation/@ApiResponse annotations -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>${springdoc.version}</version>
+        </dependency>
+
+        <!--
+          Runtime-scoped: the app only needs the JDBC driver present on the
+          classpath at run time, never at compile time (we never import
+          org.postgresql.* classes directly — Hibernate/Spring load the
+          driver via JDBC's ServiceLoader mechanism).
+        -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- JUnit 5, Mockito, AssertJ, MockMvc, spring-test — test scope only -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>

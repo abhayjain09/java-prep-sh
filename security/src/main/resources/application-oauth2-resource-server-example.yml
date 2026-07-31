@@ -1,0 +1,62 @@
+# CONCEPTUAL EXAMPLE ONLY — not wired to any active code path in this module,
+# and not activated by any profile switch. This file exists purely to show,
+# precisely, the config-only shape of the ALTERNATIVE architecture described
+# in README.md §6 and in SecurityConfig's "Alternative path" comment: an app
+# that validates JWTs issued by an external, third-party Identity Provider
+# (OKTA, Auth0, Azure AD, Keycloak, ...) instead of issuing its own.
+#
+# There is no reachable OKTA (or other IdP) tenant in this sandbox, so this
+# is deliberately NOT a live integration — treat every value below as a
+# placeholder to replace with your own tenant's real values if you wire this
+# up for real. If you do, you would also DELETE (not merely stop calling)
+# JwtService/JwtAuthenticationFilter/JwtAuthenticationEntryPoint's manual
+# validation path for the affected endpoints, and replace the
+# addFilterBefore(...) wiring in SecurityConfig with:
+#
+#   http.oauth2ResourceServer(oauth2 -> oauth2.jwt(Customizer.withDefaults()));
+#
+# Spring Security's resource-server support then does ALL of the following
+# automatically, based on the two properties below:
+#   1. Fetches the IdP's OpenID Connect discovery document from
+#      "<issuer-uri>/.well-known/openid-configuration" at startup.
+#   2. Follows that document's `jwks_uri` to fetch the IdP's current public
+#      signing keys (a JWKS — JSON Web Key Set).
+#   3. Caches those keys and refreshes them periodically / on a
+#      signature-verification failure with an unrecognized key ID (`kid`),
+#      which is exactly how IdPs rotate signing keys without any coordinated
+#      deploy on the resource-server side.
+#   4. Validates every incoming Bearer token's signature (against the fetched
+#      public key matching its `kid` header), expiry, and issuer (must equal
+#      issuer-uri) BEFORE any of your controller code runs, populating a
+#      Spring Security `Jwt`-based Authentication automatically.
+#
+# This is generally the RIGHT choice whenever a real external IdP is in the
+# picture — it means this application never sees, stores, or is responsible
+# for a single user password, and gets key rotation, JWKS caching, and
+# standard OIDC claim validation for free instead of hand-rolled (this
+# module's JwtService exists specifically to teach what that hand-rolled
+# version looks like under the hood, for the case where THIS application is
+# the issuer).
+
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          # Example only — replace with your real OKTA org's issuer, e.g.
+          # https://your-org.okta.com/oauth2/default
+          issuer-uri: https://dev-example.okta.com/oauth2/default
+
+          # Optional, if you want to pin the JWKS endpoint explicitly rather
+          # than relying on OIDC discovery to find it (useful when the IdP
+          # doesn't expose a discovery document, or you want to avoid the
+          # extra discovery round-trip at startup):
+          # jwk-set-uri: https://dev-example.okta.com/oauth2/default/v1/keys
+
+# A resource server validating externally-issued tokens should still enforce
+# `aud` (audience) itself via a custom JwtDecoder / OAuth2TokenValidator bean
+# if the IdP issues tokens shared across multiple downstream APIs — Spring
+# Security validates issuer and expiry out of the box, but audience checking
+# is application-specific (which audience value(s) THIS API should accept)
+# and is a common, easy-to-forget gap — see README.md's token-validation
+# mistakes section.

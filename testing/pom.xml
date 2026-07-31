@@ -1,0 +1,191 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 https://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.interviewprep</groupId>
+    <artifactId>testing</artifactId>
+    <version>0.1.0-SNAPSHOT</version>
+    <packaging>jar</packaging>
+
+    <name>Module 10 -- Testing (JUnit 5, Mockito, AssertJ, Testcontainers)</name>
+    <description>
+        Test suite exercising the Order/Inventory domain that lives in java-basics
+        (Module 1). This module intentionally has no production code of its own --
+        see README.md, "Why java-basics is a source root, not a dependency" for why
+        java-basics' sources are pulled in via build-helper-maven-plugin instead of a
+        proper multi-module Maven reactor dependency (java-basics has no pom.xml of
+        its own -- it predates Maven entirely in this curriculum's build-up).
+    </description>
+
+    <properties>
+        <maven.compiler.release>21</maven.compiler.release>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+
+        <junit.version>5.10.2</junit.version>
+        <mockito.version>5.12.0</mockito.version>
+        <assertj.version>3.26.3</assertj.version>
+        <testcontainers.version>1.20.1</testcontainers.version>
+        <postgresql.driver.version>42.7.3</postgresql.driver.version>
+
+        <maven.surefire.plugin.version>3.2.5</maven.surefire.plugin.version>
+        <maven.failsafe.plugin.version>3.2.5</maven.failsafe.plugin.version>
+        <build.helper.plugin.version>3.6.0</build.helper.plugin.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <!-- Testcontainers publishes a BOM so every org.testcontainers:* artifact
+                 (core, junit-jupiter, postgresql) resolves to mutually compatible
+                 versions without pinning each one by hand below. -->
+            <dependency>
+                <groupId>org.testcontainers</groupId>
+                <artifactId>testcontainers-bom</artifactId>
+                <version>${testcontainers.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- JUnit 5 (Jupiter). junit-jupiter is the aggregator artifact: it pulls in
+             junit-jupiter-api (annotations/assertions you write against),
+             junit-jupiter-params (@ParameterizedTest), and junit-jupiter-engine
+             (the runtime Surefire/Failsafe delegate to). -->
+        <dependency>
+            <groupId>org.junit.jupiter</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <version>${junit.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Mockito core: @Mock, @InjectMocks, when()/thenReturn(), doThrow()/when(),
+             verify(), ArgumentCaptor, InOrder. This is what lets OrderServiceTest
+             isolate OrderService from a real Inventory (see README). -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Wires Mockito's @Mock/@InjectMocks annotations into the JUnit 5 extension
+             model via @ExtendWith(MockitoExtension.class). Without this artifact you'd
+             need to call MockitoAnnotations.openMocks(this) by hand in a @BeforeEach
+             and close it in @AfterEach; the extension does that for you and also
+             enables strict-stubbing verification (see README's Mockito section). -->
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-junit-jupiter</artifactId>
+            <version>${mockito.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- AssertJ: fluent, chainable assertions (assertThat(x).isEqualTo(y)) with far
+             more readable failure output than plain JUnit assertEquals(expected, actual);
+             see README for the full rationale on why it's introduced here. -->
+        <dependency>
+            <groupId>org.assertj</groupId>
+            <artifactId>assertj-core</artifactId>
+            <version>${assertj.version}</version>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- Testcontainers core + its JUnit 5 integration (@Testcontainers, @Container)
+             + the typed Postgres module (PostgreSQLContainer with sane defaults, e.g.
+             wait-strategy tuned for Postgres's actual startup log line). -->
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>testcontainers</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>junit-jupiter</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.testcontainers</groupId>
+            <artifactId>postgresql</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- The real PostgreSQL JDBC driver. Testcontainers' job is only to boot the
+             database in a disposable container and hand you a JDBC URL; this driver
+             is what OrderRepositoryIT actually uses to open a java.sql.Connection and
+             run SQL against it. -->
+        <dependency>
+            <groupId>org.postgresql</groupId>
+            <artifactId>postgresql</artifactId>
+            <version>${postgresql.driver.version}</version>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- java-basics has no pom.xml of its own (Module 1 was built before Maven
+                 entered the curriculum), so it can't be declared as a normal Maven
+                 <dependency>. This plugin adds its source directory as an *additional
+                 source root* of this module, so `mvn test` compiles java-basics'
+                 domain/service classes as part of testing's own main sources (there is
+                 no src/main/java here; this IS this module's only source of main
+                 code) before compiling and running the tests in src/test/java against
+                 them. See README for the trade-off vs. a real multi-module reactor. -->
+            <plugin>
+                <groupId>org.codehaus.mojo</groupId>
+                <artifactId>build-helper-maven-plugin</artifactId>
+                <version>${build.helper.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <id>add-java-basics-as-source</id>
+                        <phase>generate-sources</phase>
+                        <goals>
+                            <goal>add-source</goal>
+                        </goals>
+                        <configuration>
+                            <sources>
+                                <source>${project.basedir}/../java-basics/src/main/java</source>
+                            </sources>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+
+            <!-- Surefire runs `mvn test`. Its default include pattern is
+                 **/*Test.java, **/*Tests.java, **/*TestCase.java; which matches
+                 InventoryTest, OrderTest, OrderStatusTest, OrderServiceTest but does
+                 NOT match OrderRepositoryIT.java. That means plain `mvn test` never
+                 needs Docker; it only exercises the mocked/pure unit tests. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-plugin</artifactId>
+                <version>${maven.surefire.plugin.version}</version>
+            </plugin>
+
+            <!-- Failsafe runs during `mvn verify` (integration-test + verify phases).
+                 Its default include pattern (**/IT*.java, **/*IT.java, **/*ITCase.java)
+                 is exactly why the integration test is named OrderRepositoryIT rather
+                 than OrderRepositoryTest; the *IT suffix is what routes it to
+                 Failsafe (requires Docker) instead of Surefire (does not). Failsafe
+                 also runs its "verify" goal after tests so a failure there fails the
+                 build even though the tests already ran (integration-test phase alone
+                 swallows failures until verify checks the recorded results). -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-failsafe-plugin</artifactId>
+                <version>${maven.failsafe.plugin.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>integration-test</goal>
+                            <goal>verify</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>

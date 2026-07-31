@@ -1,0 +1,122 @@
+# Module 5/8 — application configuration.
+#
+# WHY YAML (not application.properties): nested keys (spring.datasource.url,
+# spring.jpa.properties.hibernate.*) read as an actual tree instead of
+# repeated dotted prefixes, and lists are far less awkward. Either format
+# works identically at runtime (Boot's relaxed binding handles both) — this
+# is a style choice, not a functional one. Interviewers sometimes ask "why
+# YAML" expecting exactly this answer, not a made-up performance difference.
+#
+# WHY EXTERNALIZED CONFIG AT ALL: the whole point of Spring Boot's config
+# model is that this file's values can be overridden per-environment without
+# touching code or rebuilding the JAR — via env vars (SPRING_DATASOURCE_URL),
+# a different `--spring.profiles.active=prod`, a mounted config file, or
+# (in AWS, see aws/ module) values injected from Secrets Manager / Parameter
+# Store at container start time. Never hardcode environment-specific values
+# (DB passwords, hostnames) directly in code.
+
+spring:
+  application:
+    name: spring-orders-api
+
+  # --- Datasource: PostgreSQL (see docker-compose.yml for a local instance) ---
+  datasource:
+    url: jdbc:postgresql://localhost:5432/orders_db
+    username: orders_app
+    password: orders_app_password
+    # HikariCP ships as the default pool in Spring Boot — no extra dependency
+    # needed. Sizing it (max-pool-size) matters at scale: too small starves
+    # request threads waiting for a connection; too large can overwhelm the
+    # DB's own max_connections. 10 is Boot's sane default for a small service.
+    hikari:
+      maximum-pool-size: 10
+      minimum-idle: 2
+      connection-timeout: 30000
+
+  # --- JPA / Hibernate ---
+  jpa:
+    hibernate:
+      # WHY "update" HERE BUT NOT IN PRODUCTION: ddl-auto=update lets
+      # Hibernate auto-create/alter tables from the @Entity classes below,
+      # which is convenient for a learning sandbox but DANGEROUS in real
+      # environments — Hibernate's auto-migration can silently drop columns,
+      # pick a subtly wrong column type, or fail unpredictably on complex
+      # changes. Production practice (see database/ module) is ddl-auto=
+      # validate (Hibernate checks the schema matches but never changes it)
+      # with a real migration tool (Flyway or Liquibase) owning schema
+      # evolution via versioned, reviewable SQL migration scripts.
+      ddl-auto: update
+    show-sql: false
+    properties:
+      hibernate:
+        # Formats logged SQL for readability during local debugging; has a
+        # small logging overhead, so it's off by default (show-sql: false)
+        # and only worth flipping on locally, never in production (both for
+        # performance and because raw SQL logs can leak sensitive data).
+        format_sql: true
+        # Batches multiple inserts/updates into fewer round-trips to the DB
+        # — a real, measurable win when placeOrder() persists several
+        # OrderLine rows in one transaction.
+        jdbc:
+          batch_size: 20
+    open-in-view: false
+    # WHY open-in-view=false: Boot's default (true) keeps the Hibernate
+    # session open through view rendering, which makes lazy-loading "just
+    # work" from templates but silently allows DB queries to fire outside
+    # the service/transaction layer (e.g. from a controller or, worse, from
+    # Jackson serializing a lazy collection) — a classic source of N+1
+    # queries and connections held open longer than necessary. Disabling it
+    # forces every lazy access to happen inside an explicit @Transactional
+    # boundary, which is exactly what this module's DTO + fetch-join
+    # discipline (see EXPLANATION.md) is built around.
+
+  # --- Redis: backing store for the Spring Cache abstraction (Module 8) ---
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # timeout is how long a single Redis command may block before failing
+      # — short and finite on purpose: caching must NEVER become a slower
+      # path than hitting the database directly. A cache that occasionally
+      # hangs is worse than no cache.
+      timeout: 2000ms
+
+  cache:
+    type: redis
+
+# --- Actuator: expose a curated set of endpoints, not everything ---
+management:
+  endpoints:
+    web:
+      exposure:
+        # WHY A CURATED LIST, NOT "*": /actuator/env or /actuator/heapdump
+        # can leak secrets or memory contents if exposed publicly — exposing
+        # "*" is a common real-world misconfiguration finding in security
+        # reviews (see security/ module). health/info/metrics/caches is
+        # enough for this module's caching story without over-exposing.
+        include: health,info,metrics,caches
+  endpoint:
+    health:
+      # Shows subsystem detail (DB, Redis) in the health payload — useful in
+      # dev/staging; consider restricting to authenticated ops users in prod.
+      show-details: when-authorized
+
+server:
+  port: 8080
+
+# springdoc-openapi needs no explicit config to work — annotations on
+# controllers (@Operation, @ApiResponse) are enough. Defaults expose:
+#   /v3/api-docs        — raw OpenAPI JSON
+#   /swagger-ui.html     — interactive Swagger UI
+springdoc:
+  swagger-ui:
+    path: /swagger-ui.html
+  api-docs:
+    path: /v3/api-docs
+
+logging:
+  level:
+    # Bump to DEBUG locally to see generated SQL bind parameters when
+    # format_sql alone isn't enough context.
+    org.hibernate.SQL: INFO
+    com.interviewprep.orders.springapp: DEBUG

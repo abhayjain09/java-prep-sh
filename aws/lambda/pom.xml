@@ -1,0 +1,83 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  TEACHING ARTIFACT — ILLUSTRATIVE ONLY.
+
+  This pom.xml is NOT built or resolved as part of this repository (no
+  javac/Maven available in this teaching environment, and the module brief
+  explicitly says "explain locally; do not deploy"). It exists purely so
+  OrderEventHandler.java's dependency requirements are shown in a realistic,
+  complete form rather than only described in a code comment. See
+  ../EXPLANATION.md for a walkthrough of what each dependency provides.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.interviewprep.orders</groupId>
+    <artifactId>orders-fulfillment-lambda</artifactId>
+    <version>1.0.0</version>
+    <packaging>jar</packaging>
+
+    <properties>
+        <maven.compiler.source>21</maven.compiler.source>
+        <maven.compiler.target>21</maven.compiler.target>
+        <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+    </properties>
+
+    <dependencies>
+        <!-- Supplies RequestHandler and Context — the core Lambda
+             programming model interfaces OrderEventHandler implements. -->
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-core</artifactId>
+            <version>1.2.3</version>
+        </dependency>
+
+        <!-- Supplies SQSEvent / SQSBatchResponse — POJOs that mirror the
+             JSON payload shape Lambda delivers for an SQS-triggered
+             invocation, and the response shape needed for partial-batch-
+             failure reporting (see OrderEventHandler's Javadoc). -->
+        <dependency>
+            <groupId>com.amazonaws</groupId>
+            <artifactId>aws-lambda-java-events</artifactId>
+            <version>3.11.4</version>
+        </dependency>
+
+        <!-- Illustrative only, referenced in OrderEventHandler's comments
+             for starting a Step Functions execution — not actually used by
+             any compiled code in this teaching module. A real project would
+             add this to call StartExecution against the fulfillment saga's
+             state machine (README.md section 7). -->
+        <!--
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>sfn</artifactId>
+            <version>2.25.0</version>
+        </dependency>
+        -->
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- A real Lambda deployment package needs all dependencies
+                 bundled into one JAR (Lambda does not resolve a dependency
+                 tree at runtime the way a Maven-aware environment does) —
+                 typically via the Shade or Assembly plugin, configured here
+                 only as a comment since this pom is never actually built. -->
+            <!--
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-shade-plugin</artifactId>
+                <version>3.5.1</version>
+                <executions>
+                    <execution>
+                        <phase>package</phase>
+                        <goals><goal>shade</goal></goals>
+                    </execution>
+                </executions>
+            </plugin>
+            -->
+        </plugins>
+    </build>
+</project>

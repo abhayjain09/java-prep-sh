@@ -1,0 +1,66 @@
+/* Global styles — intentionally minimal. This module teaches Angular
+   application architecture, not CSS/design systems, so styling here is just
+   enough to make the app legible when actually run with `ng serve`. */
+
+body {
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    sans-serif;
+  margin: 0;
+  color: #1a1a1a;
+  background: #fafafa;
+}
+
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem 1.25rem;
+  background: #1f2937;
+  color: white;
+}
+
+.toolbar nav a {
+  color: white;
+  margin-right: 1rem;
+  text-decoration: none;
+}
+
+.toolbar nav a.active {
+  text-decoration: underline;
+  font-weight: 600;
+}
+
+.toolbar__auth button {
+  margin-left: 0.5rem;
+}
+
+main {
+  padding: 1.5rem;
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+table {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 1rem 0;
+}
+
+th,
+td {
+  border: 1px solid #ddd;
+  padding: 0.5rem;
+  text-align: left;
+}
+
+.form-error {
+  color: #b91c1c;
+  font-size: 0.875rem;
+}
+
+button {
+  cursor: pointer;
+}

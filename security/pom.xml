@@ -1,0 +1,142 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+    Module 6 — Security.
+
+    This is a standalone Maven module (independent of spring/'s pom.xml, which is
+    being built concurrently by another module's work). It is written to be
+    buildable on its own with `mvn -f security/pom.xml spring-boot:run`, but in a
+    real multi-module repo you would typically fold this into the same Spring Boot
+    application as the REST layer from Module 5 (spring/) — SecurityConfig,
+    JwtService, etc. would sit alongside the Order/Inventory controllers rather
+    than in a separate deployable. It is kept separate here strictly so this
+    module's code, README, and exercises are self-contained and gradable in
+    isolation, per this repo's one-module-at-a-time delivery process.
+
+    NOTE: this sandbox has no Maven/JDK installed, so this file has been written
+    and reviewed carefully but never actually run through `mvn compile`. Double
+    check dependency versions against Maven Central before building on your own
+    machine — pin to whatever is current LTS-compatible at the time you read this.
+-->
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+         xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+         xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <!--
+        spring-boot-starter-parent gives us dependency management (consistent,
+        tested versions across all Spring Boot starters) and sensible defaults
+        (UTF-8, Java release version, resource filtering) without repeating them.
+        Version 3.2.x targets Spring Framework 6 / Jakarta EE 9+ (jakarta.*
+        packages, not javax.*) and Java 17+ — matches this repo's Java 21 baseline.
+    -->
+    <parent>
+        <groupId>org.springframework.boot</groupId>
+        <artifactId>spring-boot-starter-parent</artifactId>
+        <version>3.2.5</version>
+        <relativePath/>
+    </parent>
+
+    <groupId>com.interviewprep.orders</groupId>
+    <artifactId>security</artifactId>
+    <version>1.0.0</version>
+    <name>security</name>
+    <description>Module 6 - Spring Security / JWT / OAuth2 / OIDC teaching module for the Order/Inventory system</description>
+
+    <properties>
+        <java.version>21</java.version>
+        <!-- jjwt = io.jsonwebtoken's Java JWT library. Chosen over hand-rolling
+             HMAC/RSA signing by hand (never write your own crypto) and over
+             nimbus-jose-jwt (also excellent, more low-level/verbose; jjwt has a
+             friendlier fluent builder API that's easier to teach from). -->
+        <jjwt.version>0.12.5</jjwt.version>
+    </properties>
+
+    <dependencies>
+        <!-- Core Spring MVC — needed for @RestController, request/response
+             plumbing used by AuthController and the conceptual REST endpoints
+             this security config protects. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Security: the filter chain, SecurityContext, @PreAuthorize
+             method security, PasswordEncoder, etc. This is the foundation
+             everything else in this module (SecurityConfig, JwtAuthenticationFilter,
+             RBAC annotations) builds on top of. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+
+        <!-- Actuator's /actuator/health endpoint is referenced as a permitAll()
+             example in SecurityConfig (load-balancer / orchestrator liveness
+             checks must not require auth). -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+        <!-- OAuth2 Resource Server support — used ONLY by the conceptual
+             application-oauth2-resource-server-example.yml + the commented
+             alternative SecurityFilterChain path described in the README.
+             This is what you'd use INSTEAD OF the hand-rolled JwtService/
+             JwtAuthenticationFilter when validating tokens issued by an
+             external IdP like OKTA (see README section 6). Included here so the
+             module compiles either way; a real project picks ONE of these two
+             approaches, not both. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+
+        <!-- jjwt — issuing and parsing/validating self-signed JWTs (the
+             JwtService in this module). Split into three artifacts:
+             api (compile-time interfaces), impl (runtime implementation,
+             scope=runtime so it can't be accidentally coded against directly —
+             forces you to code to the api module, which is the whole point of
+             the split), jackson (JSON (de)serialization of claims). -->
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-api</artifactId>
+            <version>${jjwt.version}</version>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-impl</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+        <dependency>
+            <groupId>io.jsonwebtoken</groupId>
+            <artifactId>jjwt-jackson</artifactId>
+            <version>${jjwt.version}</version>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- Test scope: spring-security-test gives us the `with(jwt())` /
+             `with(user())` request post-processors for MockMvc-based security
+             tests (see EXERCISES.md #6). Not exercised by any shipped test in
+             this module yet — pulled in so exercises are immediately runnable
+             once you attempt them. -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+            </plugin>
+        </plugins>
+    </build>
+</project>
