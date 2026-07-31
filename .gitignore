@@ -1,0 +1,39 @@
+# Java / Maven / Gradle
+target/
+build/
+*.class
+*.jar
+!.mvn/wrapper/maven-wrapper.jar
+.mvn/
+hs_err_pid*
+*.hprof
+*.jfr
+
+# Node / Angular
+node_modules/
+dist/
+.angular/
+npm-debug.log*
+
+# IDE
+.idea/
+*.iml
+.vscode/
+.settings/
+.classpath
+.project
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Env / secrets
+.env
+.env.*
+*.pem
+*.key
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.backup
