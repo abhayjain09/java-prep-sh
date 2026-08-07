@@ -76,6 +76,12 @@ variable "postgres_image_tag" {
   default     = "16-alpine"
 }
 
+variable "redis_image_tag" {
+  description = "Tag used for the mirrored Redis image."
+  type        = string
+  default     = "7-alpine"
+}
+
 variable "db_name" {
   description = "Application database name."
   type        = string

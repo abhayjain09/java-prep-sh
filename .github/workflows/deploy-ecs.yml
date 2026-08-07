@@ -57,6 +57,7 @@ env:
   TF_DIR: aws/terraform
   TF_STATE_KEY: ecs/terraform.tfstate
   POSTGRES_IMAGE_TAG: "16-alpine"
+  REDIS_IMAGE_TAG: "7-alpine"
   TF_IN_AUTOMATION: "true"
 
 jobs:
@@ -88,6 +89,7 @@ jobs:
       api_repo: ${{ steps.derive.outputs.api_repo }}
       web_repo: ${{ steps.derive.outputs.web_repo }}
       postgres_repo: ${{ steps.derive.outputs.postgres_repo }}
+      redis_repo: ${{ steps.derive.outputs.redis_repo }}
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -116,6 +118,7 @@ jobs:
           echo "api_repo=${PREFIX}-api" >> "$GITHUB_OUTPUT"
           echo "web_repo=${PREFIX}-web" >> "$GITHUB_OUTPUT"
           echo "postgres_repo=${PREFIX}-postgres" >> "$GITHUB_OUTPUT"
+          echo "redis_repo=${PREFIX}-redis" >> "$GITHUB_OUTPUT"
 
       - name: Ensure Terraform state bucket exists
         run: |
@@ -185,11 +188,13 @@ jobs:
             -target='aws_ecr_repository.repositories["api"]' \
             -target='aws_ecr_repository.repositories["web"]' \
             -target='aws_ecr_repository.repositories["postgres"]' \
+            -target='aws_ecr_repository.repositories["redis"]' \
             -var="aws_region=${{ inputs.aws_region }}" \
             -var="project_name=${{ inputs.project_name }}" \
             -var="environment=${{ inputs.environment_name }}" \
             -var="image_tag=${{ needs.resolve-tag.outputs.image_tag }}" \
-            -var="postgres_image_tag=${{ env.POSTGRES_IMAGE_TAG }}"
+            -var="postgres_image_tag=${{ env.POSTGRES_IMAGE_TAG }}" \
+            -var="redis_image_tag=${{ env.REDIS_IMAGE_TAG }}"
 
   mirror-support-images:
     name: Mirror ${{ matrix.service }}
@@ -204,6 +209,10 @@ jobs:
             source: postgres:16-alpine
             repo_output: postgres_repo
             tag: 16-alpine
+          - service: redis
+            source: redis:7-alpine
+            repo_output: redis_repo
+            tag: 7-alpine
     steps:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
@@ -218,7 +227,7 @@ jobs:
 
       - name: Pull, retag, and push support image
         run: |
-          REPO="${{ needs.bootstrap.outputs.postgres_repo }}"
+          REPO="${{ needs.bootstrap.outputs[matrix.repo_output] }}"
           DEST="${{ needs.bootstrap.outputs.ecr_registry }}/${REPO}"
           docker pull "${{ matrix.source }}"
           docker tag "${{ matrix.source }}" "${DEST}:${{ matrix.tag }}"
@@ -329,6 +338,28 @@ jobs:
         working-directory: ${{ env.TF_DIR }}
         run: terraform validate
 
+      - name: Detach lab log groups from Terraform state
+        working-directory: ${{ env.TF_DIR }}
+        run: |
+          if terraform state list | grep -q '^aws_cloudwatch_log_group.services'; then
+            terraform state rm 'aws_cloudwatch_log_group.services'
+          fi
+
+      - name: Ensure CloudWatch log groups exist
+        if: ${{ inputs.action == 'apply' }}
+        run: |
+          PREFIX="${{ needs.bootstrap.outputs.name_prefix }}"
+          for SERVICE in api web postgres redis; do
+            GROUP="/ecs/${PREFIX}-${SERVICE}"
+            EXISTING=$(aws logs describe-log-groups \
+              --log-group-name-prefix "$GROUP" \
+              --query "logGroups[?logGroupName=='$GROUP'].logGroupName" \
+              --output text)
+            if [ "$EXISTING" != "$GROUP" ]; then
+              aws logs create-log-group --log-group-name "$GROUP"
+            fi
+          done
+
       - name: Terraform plan
         if: ${{ inputs.action != 'destroy' }}
         working-directory: ${{ env.TF_DIR }}
@@ -339,6 +370,7 @@ jobs:
             -var="environment=${{ inputs.environment_name }}" \
             -var="image_tag=${{ needs.resolve-tag.outputs.image_tag }}" \
             -var="postgres_image_tag=${{ env.POSTGRES_IMAGE_TAG }}" \
+            -var="redis_image_tag=${{ env.REDIS_IMAGE_TAG }}" \
             -out=tfplan \
             -input=false
 
@@ -364,6 +396,7 @@ jobs:
             -var="environment=${{ inputs.environment_name }}" \
             -var="image_tag=${{ needs.resolve-tag.outputs.image_tag }}" \
             -var="postgres_image_tag=${{ env.POSTGRES_IMAGE_TAG }}" \
+            -var="redis_image_tag=${{ env.REDIS_IMAGE_TAG }}" \
             -auto-approve \
             -input=false
 
@@ -375,7 +408,6 @@ jobs:
           aws ecs wait services-stable \
             --cluster "$CLUSTER" \
             --services \
-              "${PREFIX}-postgres" \
               "${PREFIX}-api" \
               "${PREFIX}-web"
 

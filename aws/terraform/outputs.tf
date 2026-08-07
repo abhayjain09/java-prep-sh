@@ -20,11 +20,6 @@ output "ecr_repository_urls" {
   }
 }
 
-output "service_discovery_domain" {
-  description = "Private DNS suffix used for internal service-to-service calls."
-  value       = local.service_discovery_domain
-}
-
 output "sso_enabled" {
   description = "Whether Cognito-backed SSO is enabled for the ALB."
   value       = local.sso_enabled
