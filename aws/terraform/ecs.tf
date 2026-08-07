@@ -1,202 +1,344 @@
-# =============================================================================
-# TEACHING ARTIFACT — ILLUSTRATIVE ONLY. DO NOT RUN `terraform apply`.
-# See vpc.tf's header comment. Models the ECS Fargate deployment of the
-# spring/ REST API — the compute choice justified in ../README.md section 3
-# (ECS Fargate over raw EC2 or EKS for this system's scale).
-# =============================================================================
+resource "aws_cloudwatch_log_group" "services" {
+  for_each = {
+    api      = "/ecs/${local.name_prefix}-api"
+    web      = "/ecs/${local.name_prefix}-web"
+    postgres = "/ecs/${local.name_prefix}-postgres"
+    redis    = "/ecs/${local.name_prefix}-redis"
+  }
 
-resource "aws_ecs_cluster" "orders" {
-  name = "orders-cluster"
+  name              = each.value
+  retention_in_days = 7
+
+  tags = local.tags
+}
+
+resource "aws_ecs_cluster" "main" {
+  name = "${local.name_prefix}-cluster"
 
   setting {
     name  = "containerInsights"
-    value = "enabled" # feeds CloudWatch Container Insights — see README.md section 8
+    value = "enabled"
   }
+
+  tags = merge(local.tags, {
+    Name = "${local.name_prefix}-cluster"
+  })
 }
 
-# -----------------------------------------------------------------------------
-# IAM roles — TWO distinct roles, a distinction that's easy to get wrong and
-# worth calling out explicitly:
-#
-#  - EXECUTION role: used by the ECS AGENT itself to pull the container image
-#    from ECR and write logs to CloudWatch — infrastructure-level permissions,
-#    not the application's own permissions.
-#  - TASK role: assumed by the APPLICATION CODE running inside the container
-#    — this is the least-privilege role from README.md section 1 (S3, SQS,
-#    Secrets Manager, scoped to exactly what the app needs).
-#
-# Conflating these two (e.g. giving the execution role S3 access, or the task
-# role ECR pull permissions) is a common real-world misconfiguration that
-# either breaks deployment or over-grants the application.
-# -----------------------------------------------------------------------------
-data "aws_iam_policy_document" "ecs_tasks_assume_role" {
-  statement {
-    actions = ["sts:AssumeRole"]
-    principals {
-      type        = "Service"
-      identifiers = ["ecs-tasks.amazonaws.com"]
+resource "aws_ecs_task_definition" "postgres" {
+  family                   = "${local.name_prefix}-postgres"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  volume {
+    name = "postgres-data"
+
+    efs_volume_configuration {
+      file_system_id     = aws_efs_file_system.postgres.id
+      transit_encryption = "ENABLED"
+
+      authorization_config {
+        access_point_id = aws_efs_access_point.postgres.id
+        iam             = "DISABLED"
+      }
     }
   }
-}
-
-resource "aws_iam_role" "ecs_execution_role" {
-  name               = "orders-ecs-execution-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
-}
-
-resource "aws_iam_role_policy_attachment" "ecs_execution_role_managed" {
-  role       = aws_iam_role.ecs_execution_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
-}
-
-resource "aws_iam_role" "ecs_task_role" {
-  name               = "orders-ecs-task-role"
-  assume_role_policy = data.aws_iam_policy_document.ecs_tasks_assume_role.json
-}
-
-# The least-privilege policy from README.md section 1, translated to HCL:
-# S3 (exports bucket), SQS (fulfillment queue publish), Secrets Manager
-# (exactly the two secrets the app needs). NOT s3:*, NOT sqs:*, NOT
-# secretsmanager:* on Resource "*" — every Resource line is scoped.
-data "aws_iam_policy_document" "orders_app_task_policy" {
-  statement {
-    sid       = "ExportsBucketReadWrite"
-    actions   = ["s3:GetObject", "s3:PutObject"]
-    resources = ["${aws_s3_bucket.orders_exports.arn}/*"]
-  }
-
-  statement {
-    sid       = "PublishToFulfillmentFlow"
-    actions   = ["sns:Publish"]
-    resources = ["arn:aws:sns:us-east-1:123456789012:orders-order-placed"] # the OrderPlaced topic
-  }
-
-  statement {
-    sid     = "ReadAppSecrets"
-    actions = ["secretsmanager:GetSecretValue"]
-    resources = [
-      aws_db_instance.orders_postgres.master_user_secret[0].secret_arn,
-      "arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/jwt-signing-key-*",
-    ]
-  }
-}
-
-resource "aws_iam_role_policy" "orders_app_task_policy" {
-  name   = "orders-app-least-privilege-policy"
-  role   = aws_iam_role.ecs_task_role.id
-  policy = data.aws_iam_policy_document.orders_app_task_policy.json
-}
-
-# -----------------------------------------------------------------------------
-# Task definition — Fargate launch type, so no EC2 instances to define or
-# manage (see README.md section 3's EC2 vs. ECS-Fargate vs. EKS trade-off).
-# -----------------------------------------------------------------------------
-resource "aws_ecs_task_definition" "orders_api" {
-  family                   = "orders-api"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc" # required for Fargate — each task gets its own ENI
-  cpu                      = "512"    # 0.5 vCPU — illustrative sizing, would be load-tested in reality
-  memory                   = "1024"   # 1 GB
-
-  execution_role_arn = aws_iam_role.ecs_execution_role.arn
-  task_role_arn      = aws_iam_role.ecs_task_role.arn
 
   container_definitions = jsonencode([
     {
-      name      = "orders-api"
-      image     = "REPLACE_WITH_ECR_IMAGE_URI:latest" # built from spring/'s Dockerfile, not part of this module's scope
+      name      = "postgres"
+      image     = local.image_uris.postgres
       essential = true
-
       portMappings = [
-        { containerPort = 8080, protocol = "tcp" }
-      ]
-
-      # Secrets injected AT LAUNCH by the ECS agent calling Secrets Manager —
-      # the plaintext value never appears in this task definition JSON. See
-      # README.md section 9 for why this is the correct pattern versus a
-      # plain "environment" block with a hardcoded value.
-      secrets = [
         {
-          name      = "DB_PASSWORD"
-          valueFrom = aws_db_instance.orders_postgres.master_user_secret[0].secret_arn
-        },
-        {
-          name      = "JWT_SIGNING_KEY"
-          valueFrom = "arn:aws:secretsmanager:us-east-1:123456789012:secret:orders/jwt-signing-key"
+          containerPort = 5432
+          hostPort      = 5432
+          protocol      = "tcp"
         }
       ]
-
       environment = [
-        # Non-secret config only — this is the correct home for a DB
-        # hostname/port, NOT for the password (see secrets block above).
-        { name = "DB_HOST", value = aws_db_instance.orders_postgres.address },
-        { name = "DB_PORT", value = "5432" },
-        { name = "SPRING_PROFILES_ACTIVE", value = "aws" }
+        { name = "POSTGRES_DB", value = var.db_name },
+        { name = "POSTGRES_USER", value = var.db_username },
       ]
-
+      secrets = [
+        {
+          name      = "POSTGRES_PASSWORD"
+          valueFrom = aws_secretsmanager_secret.postgres_password.arn
+        }
+      ]
+      mountPoints = [
+        {
+          sourceVolume  = "postgres-data"
+          containerPath = "/var/lib/postgresql/data"
+          readOnly      = false
+        }
+      ]
+      healthCheck = {
+        command     = ["CMD-SHELL", "pg_isready -U ${var.db_username} -d ${var.db_name} || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 5
+        startPeriod = 60
+      }
       logConfiguration = {
         logDriver = "awslogs"
         options = {
-          "awslogs-group"         = "/ecs/orders-api"
-          "awslogs-region"        = "us-east-1"
-          "awslogs-stream-prefix" = "orders-api"
+          awslogs-group         = aws_cloudwatch_log_group.services["postgres"].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "postgres"
         }
       }
     }
   ])
+
+  tags = local.tags
 }
 
-# -----------------------------------------------------------------------------
-# The service — keeps the desired count of tasks running, registers them
-# with the ALB target group, and replaces unhealthy tasks automatically
-# (this replacement logic is exactly what you'd otherwise hand-roll with an
-# Auto Scaling Group + health checks on raw EC2 — see README.md section 3).
-# -----------------------------------------------------------------------------
-resource "aws_ecs_service" "orders_api" {
-  name            = "orders-api-service"
-  cluster         = aws_ecs_cluster.orders.id
-  task_definition = aws_ecs_task_definition.orders_api.arn
-  desired_count   = 2 # at least 2 for basic HA across the 2 private_app AZs
-  launch_type     = "FARGATE"
+resource "aws_ecs_task_definition" "redis" {
+  family                   = "${local.name_prefix}-redis"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "redis"
+      image     = local.image_uris.redis
+      essential = true
+      portMappings = [
+        {
+          containerPort = 6379
+          hostPort      = 6379
+          protocol      = "tcp"
+        }
+      ]
+      command = ["redis-server", "--save", "", "--appendonly", "no"]
+      healthCheck = {
+        command     = ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 5
+        startPeriod = 20
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.services["redis"].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "redis"
+        }
+      }
+    }
+  ])
+
+  tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "api" {
+  family                   = "${local.name_prefix}-api"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "512"
+  memory                   = "1024"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "api"
+      image     = local.image_uris.api
+      essential = true
+      portMappings = [
+        {
+          containerPort = 8080
+          hostPort      = 8080
+          protocol      = "tcp"
+        }
+      ]
+      environment = [
+        {
+          name  = "SPRING_DATASOURCE_URL"
+          value = "jdbc:postgresql://${aws_service_discovery_service.postgres.name}.${local.service_discovery_domain}:5432/${var.db_name}"
+        },
+        { name = "SPRING_DATASOURCE_USERNAME", value = var.db_username },
+        {
+          name  = "SPRING_DATA_REDIS_HOST"
+          value = "${aws_service_discovery_service.redis.name}.${local.service_discovery_domain}"
+        },
+        { name = "SPRING_DATA_REDIS_PORT", value = "6379" },
+        { name = "SPRING_JPA_HIBERNATE_DDL_AUTO", value = "update" },
+      ]
+      secrets = [
+        {
+          name      = "SPRING_DATASOURCE_PASSWORD"
+          valueFrom = aws_secretsmanager_secret.postgres_password.arn
+        }
+      ]
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.services["api"].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "api"
+        }
+      }
+    }
+  ])
+
+  tags = local.tags
+}
+
+resource "aws_ecs_task_definition" "web" {
+  family                   = "${local.name_prefix}-web"
+  requires_compatibilities = ["FARGATE"]
+  network_mode             = "awsvpc"
+  cpu                      = "256"
+  memory                   = "512"
+  execution_role_arn       = aws_iam_role.ecs_execution.arn
+  task_role_arn            = aws_iam_role.ecs_task.arn
+
+  container_definitions = jsonencode([
+    {
+      name      = "web"
+      image     = local.image_uris.web
+      essential = true
+      portMappings = [
+        {
+          containerPort = 80
+          hostPort      = 80
+          protocol      = "tcp"
+        }
+      ]
+      healthCheck = {
+        command     = ["CMD-SHELL", "wget -q -O /dev/null http://localhost/ || exit 1"]
+        interval    = 30
+        timeout     = 5
+        retries     = 5
+        startPeriod = 20
+      }
+      logConfiguration = {
+        logDriver = "awslogs"
+        options = {
+          awslogs-group         = aws_cloudwatch_log_group.services["web"].name
+          awslogs-region        = var.aws_region
+          awslogs-stream-prefix = "web"
+        }
+      }
+    }
+  ])
+
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "postgres" {
+  name                   = "${local.name_prefix}-postgres"
+  cluster                = aws_ecs_cluster.main.id
+  task_definition        = aws_ecs_task_definition.postgres.arn
+  desired_count          = 1
+  launch_type            = "FARGATE"
+  enable_execute_command = true
 
   network_configuration {
-    subnets          = [for s in aws_subnet.private_app : s.id]
-    security_groups  = [aws_security_group.app.id]
-    assign_public_ip = false # private subnet — no public IP; outbound via NAT
+    subnets          = [for subnet in aws_subnet.private : subnet.id]
+    security_groups  = [aws_security_group.postgres.id]
+    assign_public_ip = false
   }
 
-  # load_balancer { ... } block omitted here — wiring this task definition's
-  # port 8080 into the ALB target group defined in vpc.tf/elsewhere is left
-  # out to keep this file focused on the ECS resources themselves.
-
-  deployment_minimum_healthy_percent = 100
-  deployment_maximum_percent         = 200 # allows a full extra set of tasks during rolling deploys
-}
-
-# Application Auto Scaling — target-tracking on CPU utilization, the
-# concrete mechanism behind README.md section 3's "scale independently"
-# claim and section 12's Performance Efficiency pillar decision.
-resource "aws_appautoscaling_target" "orders_api" {
-  max_capacity       = 10
-  min_capacity       = 2
-  resource_id        = "service/${aws_ecs_cluster.orders.name}/${aws_ecs_service.orders_api.name}"
-  scalable_dimension = "ecs:service:DesiredCount"
-  service_namespace  = "ecs"
-}
-
-resource "aws_appautoscaling_policy" "orders_api_cpu" {
-  name               = "orders-api-cpu-target-tracking"
-  policy_type        = "TargetTrackingScaling"
-  resource_id        = aws_appautoscaling_target.orders_api.resource_id
-  scalable_dimension = aws_appautoscaling_target.orders_api.scalable_dimension
-  service_namespace  = aws_appautoscaling_target.orders_api.service_namespace
-
-  target_tracking_scaling_policy_configuration {
-    predefined_metric_specification {
-      predefined_metric_type = "ECSServiceAverageCPUUtilization"
-    }
-    target_value       = 60.0 # scale out once average CPU sustains above 60%
-    scale_in_cooldown  = 300
-    scale_out_cooldown = 60 # react faster to load increases than to decreases
+  service_registries {
+    registry_arn = aws_service_discovery_service.postgres.arn
   }
+
+  depends_on = [
+    aws_efs_mount_target.postgres,
+    aws_iam_role_policy.ecs_execution_secrets,
+  ]
+
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "redis" {
+  name                   = "${local.name_prefix}-redis"
+  cluster                = aws_ecs_cluster.main.id
+  task_definition        = aws_ecs_task_definition.redis.arn
+  desired_count          = 1
+  launch_type            = "FARGATE"
+  enable_execute_command = true
+
+  network_configuration {
+    subnets          = [for subnet in aws_subnet.private : subnet.id]
+    security_groups  = [aws_security_group.redis.id]
+    assign_public_ip = false
+  }
+
+  service_registries {
+    registry_arn = aws_service_discovery_service.redis.arn
+  }
+
+  depends_on = [aws_iam_role_policy.ecs_execution_secrets]
+
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "api" {
+  name                              = "${local.name_prefix}-api"
+  cluster                           = aws_ecs_cluster.main.id
+  task_definition                   = aws_ecs_task_definition.api.arn
+  desired_count                     = var.api_desired_count
+  launch_type                       = "FARGATE"
+  enable_execute_command            = true
+  health_check_grace_period_seconds = 120
+
+  network_configuration {
+    subnets          = [for subnet in aws_subnet.private : subnet.id]
+    security_groups  = [aws_security_group.api.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.api.arn
+    container_name   = "api"
+    container_port   = 8080
+  }
+
+  depends_on = [
+    aws_lb_listener.http,
+    aws_ecs_service.postgres,
+    aws_ecs_service.redis,
+    aws_iam_role_policy.ecs_execution_secrets,
+  ]
+
+  tags = local.tags
+}
+
+resource "aws_ecs_service" "web" {
+  name                              = "${local.name_prefix}-web"
+  cluster                           = aws_ecs_cluster.main.id
+  task_definition                   = aws_ecs_task_definition.web.arn
+  desired_count                     = var.web_desired_count
+  launch_type                       = "FARGATE"
+  enable_execute_command            = true
+  health_check_grace_period_seconds = 60
+
+  network_configuration {
+    subnets          = [for subnet in aws_subnet.private : subnet.id]
+    security_groups  = [aws_security_group.web.id]
+    assign_public_ip = false
+  }
+
+  load_balancer {
+    target_group_arn = aws_lb_target_group.web.arn
+    container_name   = "web"
+    container_port   = 80
+  }
+
+  depends_on = [aws_lb_listener.http]
+
+  tags = local.tags
 }
