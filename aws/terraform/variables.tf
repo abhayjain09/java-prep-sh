@@ -89,15 +89,25 @@ variable "db_username" {
 }
 
 variable "api_desired_count" {
-  description = "Desired number of Spring API tasks."
+  description = "Desired number of Spring API tasks, capped to keep the cluster within the three-task Fargate limit."
   type        = number
   default     = 1
+
+  validation {
+    condition     = contains([0, 1], var.api_desired_count)
+    error_message = "api_desired_count must be either 0 or 1."
+  }
 }
 
 variable "web_desired_count" {
-  description = "Desired number of Angular web tasks."
+  description = "Desired number of Angular web tasks, capped to keep the cluster within the three-task Fargate limit."
   type        = number
   default     = 1
+
+  validation {
+    condition     = contains([0, 1], var.web_desired_count)
+    error_message = "web_desired_count must be either 0 or 1."
+  }
 }
 
 variable "common_tags" {

@@ -190,12 +190,14 @@ resource "aws_ecs_task_definition" "web" {
 }
 
 resource "aws_ecs_service" "postgres" {
-  name                   = "${local.name_prefix}-postgres"
-  cluster                = aws_ecs_cluster.main.id
-  task_definition        = aws_ecs_task_definition.postgres.arn
-  desired_count          = 1
-  launch_type            = "FARGATE"
-  enable_execute_command = true
+  name                               = "${local.name_prefix}-postgres"
+  cluster                            = aws_ecs_cluster.main.id
+  task_definition                    = aws_ecs_task_definition.postgres.arn
+  desired_count                      = 1
+  launch_type                        = "FARGATE"
+  enable_execute_command             = true
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]
@@ -216,13 +218,15 @@ resource "aws_ecs_service" "postgres" {
 }
 
 resource "aws_ecs_service" "api" {
-  name                              = "${local.name_prefix}-api"
-  cluster                           = aws_ecs_cluster.main.id
-  task_definition                   = aws_ecs_task_definition.api.arn
-  desired_count                     = var.api_desired_count
-  launch_type                       = "FARGATE"
-  enable_execute_command            = true
-  health_check_grace_period_seconds = 120
+  name                               = "${local.name_prefix}-api"
+  cluster                            = aws_ecs_cluster.main.id
+  task_definition                    = aws_ecs_task_definition.api.arn
+  desired_count                      = var.api_desired_count
+  launch_type                        = "FARGATE"
+  enable_execute_command             = true
+  health_check_grace_period_seconds  = 120
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]
@@ -246,13 +250,15 @@ resource "aws_ecs_service" "api" {
 }
 
 resource "aws_ecs_service" "web" {
-  name                              = "${local.name_prefix}-web"
-  cluster                           = aws_ecs_cluster.main.id
-  task_definition                   = aws_ecs_task_definition.web.arn
-  desired_count                     = var.web_desired_count
-  launch_type                       = "FARGATE"
-  enable_execute_command            = true
-  health_check_grace_period_seconds = 60
+  name                               = "${local.name_prefix}-web"
+  cluster                            = aws_ecs_cluster.main.id
+  task_definition                    = aws_ecs_task_definition.web.arn
+  desired_count                      = var.web_desired_count
+  launch_type                        = "FARGATE"
+  enable_execute_command             = true
+  health_check_grace_period_seconds  = 60
+  deployment_minimum_healthy_percent = 0
+  deployment_maximum_percent         = 100
 
   network_configuration {
     subnets          = [for subnet in aws_subnet.private : subnet.id]

@@ -1,7 +1,7 @@
 locals {
   azs         = slice(data.aws_availability_zones.available.names, 0, 2)
   name_prefix = "${var.project_name}-${var.environment}"
-  sso_enabled = var.root_domain_name != null && trimspace(var.root_domain_name) != ""
+  sso_enabled = trimspace(var.root_domain_name != null ? var.root_domain_name : "") != ""
   root_domain = local.sso_enabled ? trimsuffix(var.root_domain_name, ".") : null
   app_domain  = local.sso_enabled ? "${var.app_subdomain}.${local.root_domain}" : null
 
