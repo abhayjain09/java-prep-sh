@@ -3,6 +3,16 @@ name: Deploy to ECS
 on:
   workflow_dispatch:
     inputs:
+      aws_access_key_id:
+        description: AWS access key ID for this deployment run
+        required: true
+      aws_secret_access_key:
+        description: AWS secret access key for this deployment run
+        required: true
+      aws_session_token:
+        description: Optional AWS session token for temporary credentials
+        required: false
+        default: ""
       aws_region:
         description: AWS region to deploy into
         required: false
@@ -84,8 +94,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+          aws-session-token: ${{ inputs.aws_session_token }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Derive runtime names
@@ -149,8 +160,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+          aws-session-token: ${{ inputs.aws_session_token }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Setup Terraform
@@ -205,8 +217,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+          aws-session-token: ${{ inputs.aws_session_token }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Login to Amazon ECR
@@ -248,8 +261,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+          aws-session-token: ${{ inputs.aws_session_token }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Login to Amazon ECR
@@ -299,8 +313,9 @@ jobs:
       - name: Configure AWS credentials
         uses: aws-actions/configure-aws-credentials@v4
         with:
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-access-key-id: ${{ inputs.aws_access_key_id }}
+          aws-secret-access-key: ${{ inputs.aws_secret_access_key }}
+          aws-session-token: ${{ inputs.aws_session_token }}
           aws-region: ${{ inputs.aws_region }}
 
       - name: Setup Terraform
