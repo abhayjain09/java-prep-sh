@@ -66,7 +66,7 @@ import { PlaceOrderRequest } from '../../core/models/order.model';
             </tr>
           </thead>
           <tbody formArrayName="lines">
-            @for (lineGroup of lines.controls; track $index; let i = $index) {
+            @for (lineGroup of lines.controls; track lineGroup; let i = $index) {
               <tr [formGroupName]="i">
                 <td><input type="text" formControlName="sku" placeholder="SKU" /></td>
                 <td>
@@ -88,7 +88,7 @@ import { PlaceOrderRequest } from '../../core/models/order.model';
         <p>Estimated total (client-side, for display only): {{ estimatedTotal() | number: '1.2-2' }}</p>
 
         <!--
-          `form.invalid` disables submission entirely while any control
+          form.invalid disables submission entirely while any control
           fails validation (including our custom positiveQuantityValidator
           and the required/min-length checks on customerId and each line's
           sku). This is the reactive-forms equivalent of the "check before
@@ -204,7 +204,10 @@ export class OrderFormComponent implements OnInit {
     const raw = this.form.getRawValue();
     const request: PlaceOrderRequest = {
       customerId: raw.customerId,
-      lines: raw.lines.map((line) => ({ sku: line.sku, quantity: Number(line.quantity) })),
+      lines: raw.lines.map((line) => ({
+        sku: line['sku'],
+        quantity: Number(line['quantity']),
+      })),
     };
 
     this.submitting.set(true);

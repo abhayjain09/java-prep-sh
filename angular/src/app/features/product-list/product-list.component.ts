@@ -67,12 +67,12 @@ import { Product } from '../../core/models/product.model';
           </thead>
           <tbody>
             <!--
-              `track product.sku`: REQUIRED (not optional like `trackBy` was
-              with `*ngFor`) in the new `@for` syntax. It tells Angular's
+              track product.sku is REQUIRED (not optional like trackBy was
+              with *ngFor) in the new @for syntax. It tells Angular's
               renderer which DOM node corresponds to which data item across
               re-renders, so re-ordering/filtering the array (e.g. from the
               search box below) moves/reuses existing <tr> elements instead
-              of destroying and recreating every row. Tracking by `sku`
+              of destroying and recreating every row. Tracking by sku
               (a stable business key) instead of array index means a
               re-sorted or filtered list still maps correctly to the SAME
               DOM nodes — tracking by index would misattribute rows after

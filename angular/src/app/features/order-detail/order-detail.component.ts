@@ -2,7 +2,7 @@ import { DecimalPipe } from '@angular/common';
 import { ChangeDetectionStrategy, Component, computed, inject, signal } from '@angular/core';
 import { toSignal } from '@angular/core/rxjs-interop';
 import { ActivatedRoute } from '@angular/router';
-import { map } from 'rxjs';
+import { map, startWith } from 'rxjs';
 
 import { AuthService } from '../../core/services/auth.service';
 import { OrderService } from '../../core/services/order.service';
@@ -54,13 +54,13 @@ import { Order, OrderStatus } from '../../core/models/order.model';
 
         <!--
           Double-gated Cancel button:
-          1. `canTransitionToCancelled()` mirrors OrderStatus.canTransitionTo
+          1. canTransitionToCancelled() mirrors OrderStatus.canTransitionTo
              from java-basics — only PENDING/CONFIRMED orders can legally
              move to CANCELLED. Hiding the button for a SHIPPED order isn't
              just UX polish; it reflects the exact same state machine the
              backend enforces, so the user isn't invited to attempt an
              action the backend will reject with 409 Conflict anyway.
-          2. `auth.hasRole('MANAGER')` is a CLIENT-SIDE-ONLY convenience
+          2. auth.hasRole('MANAGER') is a CLIENT-SIDE-ONLY convenience
              (see AuthService.hasRole's comment) — hiding the button from a
              CUSTOMER is UX, not security. The backend's Spring Security
              method security (Module 6) is what actually prevents a
@@ -106,13 +106,15 @@ export class OrderDetailComponent {
   /**
    * `toSignal` bridges that Observable pipeline into a Signal so the
    * template reads it synchronously with no `| async` pipe and no manual
-   * `OnDestroy` unsubscribe. `initialValue: undefined` means this reads as
-   * `undefined` until the first HTTP response — handled by the template's
-   * `@if (currentOrder(); as order) { ... } @else { loading... }`.
+   * `OnDestroy` unsubscribe. `startWith(null)` gives the signal an immediate
+   * "no order yet" state until the first HTTP response — handled by the
+   * template's `@if (currentOrder(); as order) { ... } @else { loading...
+   * }`.
    */
-  private readonly liveOrder = toSignal(this.orderService.watchOrder(this.orderId$), {
-    initialValue: undefined as Order | undefined,
-  });
+  private readonly liveOrder = toSignal(
+    this.orderService.watchOrder(this.orderId$).pipe(startWith(null as Order | null)),
+    { requireSync: true },
+  );
 
   /**
    * Local override that reflects a just-completed cancel immediately,

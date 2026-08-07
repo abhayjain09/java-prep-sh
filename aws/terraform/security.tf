@@ -11,6 +11,14 @@ resource "aws_security_group" "alb" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
+  ingress {
+    description = "HTTPS from the internet"
+    from_port   = 443
+    to_port     = 443
+    protocol    = "tcp"
+    cidr_blocks = ["0.0.0.0/0"]
+  }
+
   egress {
     from_port   = 0
     to_port     = 0
@@ -95,31 +103,6 @@ resource "aws_security_group" "postgres" {
 
   tags = merge(local.tags, {
     Name = "${local.name_prefix}-postgres-sg"
-  })
-}
-
-resource "aws_security_group" "redis" {
-  name        = "${local.name_prefix}-redis-sg"
-  description = "Redis security group"
-  vpc_id      = aws_vpc.main.id
-
-  ingress {
-    description     = "Redis from the API service only"
-    from_port       = 6379
-    to_port         = 6379
-    protocol        = "tcp"
-    security_groups = [aws_security_group.api.id]
-  }
-
-  egress {
-    from_port   = 0
-    to_port     = 0
-    protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"]
-  }
-
-  tags = merge(local.tags, {
-    Name = "${local.name_prefix}-redis-sg"
   })
 }
 

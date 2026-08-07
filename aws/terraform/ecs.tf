@@ -3,7 +3,6 @@ resource "aws_cloudwatch_log_group" "services" {
     api      = "/ecs/${local.name_prefix}-api"
     web      = "/ecs/${local.name_prefix}-web"
     postgres = "/ecs/${local.name_prefix}-postgres"
-    redis    = "/ecs/${local.name_prefix}-redis"
   }
 
   name              = each.value
@@ -98,49 +97,6 @@ resource "aws_ecs_task_definition" "postgres" {
   tags = local.tags
 }
 
-resource "aws_ecs_task_definition" "redis" {
-  family                   = "${local.name_prefix}-redis"
-  requires_compatibilities = ["FARGATE"]
-  network_mode             = "awsvpc"
-  cpu                      = "256"
-  memory                   = "512"
-  execution_role_arn       = aws_iam_role.ecs_execution.arn
-  task_role_arn            = aws_iam_role.ecs_task.arn
-
-  container_definitions = jsonencode([
-    {
-      name      = "redis"
-      image     = local.image_uris.redis
-      essential = true
-      portMappings = [
-        {
-          containerPort = 6379
-          hostPort      = 6379
-          protocol      = "tcp"
-        }
-      ]
-      command = ["redis-server", "--save", "", "--appendonly", "no"]
-      healthCheck = {
-        command     = ["CMD-SHELL", "redis-cli ping | grep PONG || exit 1"]
-        interval    = 30
-        timeout     = 5
-        retries     = 5
-        startPeriod = 20
-      }
-      logConfiguration = {
-        logDriver = "awslogs"
-        options = {
-          awslogs-group         = aws_cloudwatch_log_group.services["redis"].name
-          awslogs-region        = var.aws_region
-          awslogs-stream-prefix = "redis"
-        }
-      }
-    }
-  ])
-
-  tags = local.tags
-}
-
 resource "aws_ecs_task_definition" "api" {
   family                   = "${local.name_prefix}-api"
   requires_compatibilities = ["FARGATE"]
@@ -168,11 +124,7 @@ resource "aws_ecs_task_definition" "api" {
           value = "jdbc:postgresql://${aws_service_discovery_service.postgres.name}.${local.service_discovery_domain}:5432/${var.db_name}"
         },
         { name = "SPRING_DATASOURCE_USERNAME", value = var.db_username },
-        {
-          name  = "SPRING_DATA_REDIS_HOST"
-          value = "${aws_service_discovery_service.redis.name}.${local.service_discovery_domain}"
-        },
-        { name = "SPRING_DATA_REDIS_PORT", value = "6379" },
+        { name = "SPRING_CACHE_TYPE", value = "simple" },
         { name = "SPRING_JPA_HIBERNATE_DDL_AUTO", value = "update" },
       ]
       secrets = [
@@ -263,29 +215,6 @@ resource "aws_ecs_service" "postgres" {
   tags = local.tags
 }
 
-resource "aws_ecs_service" "redis" {
-  name                   = "${local.name_prefix}-redis"
-  cluster                = aws_ecs_cluster.main.id
-  task_definition        = aws_ecs_task_definition.redis.arn
-  desired_count          = 1
-  launch_type            = "FARGATE"
-  enable_execute_command = true
-
-  network_configuration {
-    subnets          = [for subnet in aws_subnet.private : subnet.id]
-    security_groups  = [aws_security_group.redis.id]
-    assign_public_ip = false
-  }
-
-  service_registries {
-    registry_arn = aws_service_discovery_service.redis.arn
-  }
-
-  depends_on = [aws_iam_role_policy.ecs_execution_secrets]
-
-  tags = local.tags
-}
-
 resource "aws_ecs_service" "api" {
   name                              = "${local.name_prefix}-api"
   cluster                           = aws_ecs_cluster.main.id
@@ -310,7 +239,6 @@ resource "aws_ecs_service" "api" {
   depends_on = [
     aws_lb_listener.http,
     aws_ecs_service.postgres,
-    aws_ecs_service.redis,
     aws_iam_role_policy.ecs_execution_secrets,
   ]
 
